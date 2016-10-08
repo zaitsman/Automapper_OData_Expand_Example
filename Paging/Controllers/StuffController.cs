@@ -4,20 +4,14 @@
   using System.Collections.Generic;
   using System.Linq;
   using System.Linq.Expressions;
-  using System.Net.Http;
   using System.Web.Http;
   using System.Web.Http.Filters;
   using System.Web.Http.OData;
   using System.Web.Http.OData.Extensions;
-  using System.Web.Http.OData.Properties;
   using System.Web.Http.OData.Query;
-  using System.Web.Http.Results;
 
   using AutoMapper;
   using AutoMapper.QueryableExtensions;
-  using AutoMapper.QueryableExtensions.Impl;
-
-  using Microsoft.Data.Edm;
 
   using Newtonsoft.Json;
 
@@ -29,7 +23,7 @@
     [HttpGet]
     public dynamic Get()
     {
-      // return this.NotFound();
+      // This could be done in Global.asax or Startup.cs
       Mapper.Initialize(cfg =>
       {
         cfg.CreateMap<InternalP, ExternalP>();
@@ -46,9 +40,9 @@
             z.MapFrom(y => y.P2s);
             z.ExplicitExpansion();
           });
-
       });
 
+      // this is our data from the database.
       return
         new List<Internal>
           {
@@ -67,10 +61,12 @@
                 P2s = new List<InternalP>()
               }
           }.AsQueryable();
-      // ProjectTo<External>(new [] {"Ps"});
     }
   }
 
+  #region Models
+  
+  // db models
   public class Internal
   {
     public string StuffI { get; set; }
@@ -84,6 +80,7 @@
     public string Shoes { get; set; }
   }
 
+  // DTO models
   public class ExternalP
   {
     public string Shoes { get; set; }
@@ -102,6 +99,10 @@
     public List<ExternalP> P2s { get; set; }
   }
 
+#endregion
+
+  // attribute that does the magic
+
   public class ExpandableQuery : EnableQueryAttribute
   {
     public Type DTOType { get; set; }
@@ -110,6 +111,7 @@
 
     public override void OnActionExecuted(HttpActionExecutedContext actionExecutedContext)
     {
+      // First, we need to do the ProjectTo<> bit.
       var responseContent = actionExecutedContext.Response.Content;
       var objectContent = (responseContent as System.Net.Http.ObjectContent);
       var resultBeforeOdata = objectContent?.Value as IQueryable;
@@ -124,7 +126,7 @@
             x =>
             x.Name == nameof(Extensions.ProjectTo) && x.GetParameters().Count() == 3
             && x.GetParameters()[1].ParameterType == typeof(AutoMapper.IConfigurationProvider))
-          .ToList()[0].MakeGenericMethod(this.DTOType); // Unfortunatuely, Automapper does nto provide a ProjectTo() method with Type suppliable as paramter, we have to use reflection for this.
+          .ToList()[0].MakeGenericMethod(this.DTOType); // Unfortunatuely, Automapper does not provide a ProjectTo() method with Type suppliable as paramter, we have to use reflection for this.
 
         // the below code is taken from the base class
         var model = this.GetModel(this.DTOType, actionExecutedContext.Request, actionExecutedContext.ActionContext.ActionDescriptor);
@@ -138,7 +140,7 @@
         var funcType = typeof(Func<,>).MakeGenericType(this.DTOType, typeof(object));
         if (!string.IsNullOrEmpty(expand))
         {
-          foreach (var exp in expand.Split(','))
+          foreach (var exp in expand.Split(',')) // TODO: add support for multi level $expand
           {
             var parameterExpression = Expression.Parameter(this.DTOType, "x");
             var property = Expression.Property(parameterExpression, exp);
